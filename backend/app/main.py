@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
@@ -14,6 +12,7 @@ from . import crud, schemas, sync
 from .database import Base, SessionLocal, engine, get_db
 from .events import hub
 from .paths import frontend_dist
+from .frontend import mount_frontend
 
 
 def _migrate_sqlite() -> None:
@@ -129,28 +128,4 @@ def unhide_project(
     return schemas.HiddenProjectsOut(paths=paths)
 
 
-STATIC_DIR = frontend_dist()
-
-
-def mount_frontend() -> None:
-    if not STATIC_DIR.exists():
-        return
-    assets = STATIC_DIR / "assets"
-    if assets.exists():
-        app.mount("/assets", StaticFiles(directory=assets), name="assets")
-
-    @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
-
-    @app.get("/{full_path:path}")
-    def spa_fallback(full_path: str) -> FileResponse:
-        if full_path.startswith("api/") or full_path in {"docs", "openapi.json", "redoc"}:
-            raise HTTPException(status_code=404, detail="Not found")
-        candidate = STATIC_DIR / full_path
-        if candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(STATIC_DIR / "index.html")
-
-
-mount_frontend()
+mount_frontend(app, frontend_dist())
